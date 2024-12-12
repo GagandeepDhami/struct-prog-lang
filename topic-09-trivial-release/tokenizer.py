@@ -7,10 +7,13 @@ patterns = [
     [r'"([^"]|"")*"', "string"],  # string literals
     [r"true|false", "boolean"],  # boolean literals
     [r"null", "null"],  # the null literal
+
+    # Keywords
     [r"function", "function"],  # function keyword
     [r"return", "return"],  # return keyword
     [r"if", "if"],  # if keyword
     [r"else", "else"],  # else keyword
+    [r"elseif", "elseif"],      # CLASS PROJECT: elseif keyword 
     [r"while", "while"],  # while keyword
     [r"for", "for"],  # for keyword
     [r"break", "break"],  # for keyword
@@ -18,12 +21,21 @@ patterns = [
     [r"print", "print"],  # print keyword
     [r"import", "import"],  # import keyword
     [r"external", "external"],  # external keyword
-    [r"input", "input"],  # function keyword
+    [r"input", "input"],  # function keyworddt
     [r"exit", "exit"],  # exit keyword
+    [r"switch", "switch"],      # CLASS PROJECT: switch keyword
+    [r"case", "case"],          # CLASS PROJECT: case keyword
+    [r"default", "default"],    # CLASS PROJECT: default keyword
+    
+    # Boolean operators (alternate forms)
     [r"and", "&&"],  # alternate for &&
     [r"or", "||"],  # alternate for ||
     [r"not", "!"],  # alternate for !
+
+    # Identifiers
     [r"[a-zA-Z_][a-zA-Z0-9_]*", "identifier"],  # identifiers
+
+    # Operators and punctuation
     [r"\+", "+"],
     [r"\-", "-"],
     [r"\*", "*"],
@@ -49,16 +61,17 @@ patterns = [
     [r"\,", ","],
     [r"\:", ":"],
     [r"\;", ";"],
-    [r".", "error"],  # unexpected content
+
+    # Error handling for unexpected characters
+    [r".", "error"],      # unexpected content
 ]
+
 
 for pattern in patterns:
     pattern[0] = re.compile(pattern[0])
 
 test_generated_tags = set()
 
-
-# The lex/tokenize function
 def tokenize(characters, generated_tags=test_generated_tags):
     tokens = []
     position = 0
@@ -101,7 +114,6 @@ def tokenize(characters, generated_tags=test_generated_tags):
     tokens.append({"tag": None, "value": None, "position": position})
     return tokens
 
-
 def test_simple_tokens():
     print("testing simple tokens...")
     examples = ".,[,],+,-,*,/,(,),{,},;,:,!,&&,||,<,>,<=,>=,==,!=,=".split(",")
@@ -125,7 +137,6 @@ def test_simple_tokens():
     t2 = tokenize("&& || !")
     assert [t["tag"] for t in t1] == [t["tag"] for t in t2]
 
-
 def test_number_tokens():
     print("testing number tokens...")
     for s in ["1", "22", "12.1", "0", "12.", "123145", ".1234"]:
@@ -133,7 +144,6 @@ def test_number_tokens():
         assert len(t) == 2, f"got tokens = {t}"
         assert t[0]["tag"] == "number"
         assert t[0]["value"] == float(s)
-
 
 def test_string_tokens():
     print("testing string tokens...")
@@ -143,7 +153,6 @@ def test_string_tokens():
         assert t[0]["tag"] == "string"
         # adjust for the embedded quote behaviour
         assert t[0]["value"] == s[1:-1].replace('""', '"')
-
 
 def test_boolean_tokens():
     print("testing boolean tokens...")
@@ -158,7 +167,6 @@ def test_boolean_tokens():
     assert len(t) == 2
     assert t[0]["tag"] == "null"
 
-
 def test_identifier_tokens():
     print("testing identifier tokens...")
     for s in ["x", "y", "z", "alpha", "beta", "gamma"]:
@@ -166,7 +174,6 @@ def test_identifier_tokens():
         assert len(t) == 2
         assert t[0]["tag"] == "identifier"
         assert t[0]["value"] == s
-
 
 def test_whitespace():
     print("testing whitespace...")
@@ -176,13 +183,11 @@ def test_whitespace():
         assert t[0]["tag"] == "number"
         assert t[0]["value"] == 1
 
-
 def verify_same_tokens(a, b):
     def remove_position(tokens):
         return [{"tag": t["tag"], "value": t["value"]} for t in tokens]
 
     return remove_position(tokenize(a)) == remove_position(tokenize(b))
-
 
 def test_multiple_tokens():
     print("testing multiple tokens...")
@@ -219,7 +224,6 @@ def test_multiple_tokens():
     assert verify_same_tokens("3+4*(5-2)", " 3 + 4 * (5 - 2) ")
     assert verify_same_tokens("3+4*(5-2)", "  3  +  4 * (5 - 2)  ")
 
-
 def test_keywords():
     print("testing keywords...")
     for keyword in [
@@ -231,17 +235,16 @@ def test_keywords():
         "for",
         "break",
         "continue",
-        "external",  # (reserved for future use)
-        "import",  # (reserved for future use)
+        "external",
+        "import",
         "input",
         "print",
-        "exit",
+        "exit"
     ]:
         t = tokenize(keyword)
         assert len(t) == 2
         assert t[0]["tag"] == keyword, f"expected {keyword}, got {t[0]}"
         assert "value" not in t
-
 
 def test_comments():
     print("testing comments...")
@@ -250,7 +253,6 @@ def test_comments():
     assert verify_same_tokens("//alpha//comment\n", "//alpha\n")
     assert verify_same_tokens("1+5  //comment\n", "1+5  \n")
     assert verify_same_tokens('"beta"//comment\n', '"beta"\n')
-
 
 def test_error():
     print("testing token errors...")
@@ -262,12 +264,10 @@ def test_error():
         assert "Syntax error" in error_string
         assert "illegal character" in error_string
 
-
 def test_tag_coverage():
     print("testing comprehensive tag coverage...")
     for pattern, tag in patterns:
         assert tag in test_generated_tags, f"Tag [ {tag} ] was not tested."
-
 
 if __name__ == "__main__":
     print("testing tokenizer.")

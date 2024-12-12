@@ -34,17 +34,20 @@ grammar = """
 
     statement = if_statement | while_statement | function_statement | return_statement | print_statement | assignment_statement ;
 
+    !! CLASS PROJECT !!
+    
+    switch_statement = "switch" "(" expression ")" "{" { "case" expression ":" statement_list ";" } [ "default" ":" statement_list ";" ] "}" ;
+    if_statement = "if" "(" expression ")" statement_list { "elseif" "(" expression ")" statement_list } [ "else" statement_list ] ;
+
     program = [ statement { ";" statement } ] ;
     """
 
 # BASIC EXPRESSIONS
 
-
 def parse_simple_expression(tokens):
     """
     simple_expression = identifier | <boolean> | <number> | <string> | list_literal | object_literal | ("-" simple_expression) | ("!" simple_expression) | function_literal | ( "(" expression ")" ) ;
     """
-
     token = tokens[0]
 
     if token["tag"] in {"identifier", "boolean", "number", "string"}:
@@ -807,37 +810,40 @@ def test_parse_statement_list():
         ],
     }
 
-
 def parse_if_statement(tokens):
-    """
-    if_statement = "if" "(" expression ")" statement_list [ "else" (if_statement | statement_list) ] ;
-    """
     assert tokens[0]["tag"] == "if"
     tokens = tokens[1:]
-    if tokens[0]["tag"] != "(":
-        raise Exception(f"Expected '(': {tokens[0]}")
+    assert tokens[0]["tag"] == "(", f"Expected '(' after if"
     condition, tokens = parse_expression(tokens[1:])
-    if tokens[0]["tag"] != ")":
-        raise Exception(f"Expected ')': {tokens[0]}")
+    assert tokens[0]["tag"] == ")", f"Expected ')' after if condition"
     then_statement_list, tokens = parse_statement_list(tokens[1:])
+
     node = {
         "tag": "if",
         "condition": condition,
         "then": then_statement_list,
     }
+
+    # Parse zero or more 'elseif' blocks
+    elseif_blocks = []
+    while tokens[0]["tag"] == "elseif":
+        tokens = tokens[1:]
+        assert tokens[0]["tag"] == "(", "Expected '(' after elseif"
+        elseif_condition, tokens = parse_expression(tokens[1:])
+        assert tokens[0]["tag"] == ")", "Expected ')' after elseif condition"
+        elseif_statements, tokens = parse_statement_list(tokens[1:])
+        elseif_blocks.append((elseif_condition, elseif_statements))
+
+    if elseif_blocks:
+        node["elseif"] = [{"condition": c, "then": s} for c, s in elseif_blocks]
+
     if tokens[0]["tag"] == "else":
         tokens = tokens[1:]
-        assert tokens[0]["tag"] in [
-            "{",
-            "if",
-        ], "Else must be followed by statement_list or if statement."
-        if tokens[0]["tag"] == "{":
-            else_statement_list, tokens = parse_statement_list(tokens)
-        else:
-            else_statement_list, tokens = parse_if_statement(tokens)
+        assert tokens[0]["tag"] == "{", "Else must be followed by statement_list"
+        else_statement_list, tokens = parse_statement_list(tokens)
         node["else"] = else_statement_list
-    return node, tokens
 
+    return node, tokens
 
 def test_parse_if_statement():
     """
@@ -903,6 +909,50 @@ def test_parse_while_statement():
             "statements": [{"tag": "print", "value": {"tag": "number", "value": 1}}],
         },
     }
+
+
+
+def parse_switch_statement(tokens):
+    # New function for switch_statement 
+    assert tokens[0]["tag"] == "switch", f"Expected 'switch', got {tokens[0]}"
+    tokens = tokens[1:]
+    assert tokens[0]["tag"] == "(", f"Expected '(' after switch"
+    condition, tokens = parse_expression(tokens[1:])
+    assert tokens[0]["tag"] == ")", f"Expected ')' after switch condition"
+    tokens = tokens[1:]
+    assert tokens[0]["tag"] == "{", f"Expected '{{' after switch(...)"
+    tokens = tokens[1:]
+
+    cases = []
+    default = None
+
+    while tokens[0]["tag"] == "case":
+        tokens = tokens[1:]
+        case_value, tokens = parse_expression(tokens)
+        assert tokens[0]["tag"] == ":", "Expected ':' after case value"
+        tokens = tokens[1:]
+        case_statements, tokens = parse_statement_list(tokens)
+        cases.append({"value": case_value, "statements": case_statements})
+        assert tokens[0]["tag"] == ";", "Expected ';' after case block"
+        tokens = tokens[1:]
+
+    if tokens[0]["tag"] == "default":
+        tokens = tokens[1:]
+        assert tokens[0]["tag"] == ":", "Expected ':' after default"
+        tokens = tokens[1:]
+        default, tokens = parse_statement_list(tokens)
+        assert tokens[0]["tag"] == ";", "Expected ';' after default block"
+        tokens = tokens[1:]
+
+    assert tokens[0]["tag"] == "}", f"Expected '}}' at end of switch"
+    tokens = tokens[1:]
+
+    return {
+        "tag": "switch",
+        "condition": condition,
+        "cases": cases,
+        "default": default,
+    }, tokens
 
 
 def parse_return_statement(tokens):
@@ -1025,12 +1075,10 @@ def test_parse_function_statement():
 
 def parse_statement(tokens):
     """
-    statement = if_statement | while_statement |  function_statement | return_statement | print_statement | assignment_statement ;
+    statement = if_statement | while_statement | function_statement | return_statement | print_statement | assignment_statement ;
     """
     tag = tokens[0]["tag"]
-    # note: none of these consumes a token
-    # if tag == "{":
-    #     return parse_statement_list(tokens)
+    # Add condition for switch statements
     if tag == "if":
         return parse_if_statement(tokens)
     if tag == "while":
@@ -1041,6 +1089,8 @@ def parse_statement(tokens):
         return parse_return_statement(tokens)
     if tag == "print":
         return parse_print_statement(tokens)
+    if tag == "switch":  # Handle switch_statement
+        return parse_switch_statement(tokens)
     return parse_assignment_statement(tokens)
 
 
@@ -1075,6 +1125,34 @@ def test_parse_statement():
         parse_statement(tokenize("function x(y){2}"))[0]
         == parse_function_statement(tokenize("function x(y){2}"))[0]
     )
+
+def test_parse_switch_statement():
+    tokens = tokenize("switch(x) { case 1: { print 1; }; case 2: { print 2; }; default: { print 0; }; }")
+    ast, _ = parse_switch_statement(tokens)
+    assert ast == {
+        "tag": "switch",
+        "condition": {"tag": "identifier", "value": "x"},
+        "cases": [
+            {
+                "value": {"tag": "number", "value": 1},
+                "statements": {
+                    "tag": "statement_list",
+                    "statements": [{"tag": "print", "value": {"tag": "number", "value": 1}}]
+                },
+            },
+            {
+                "value": {"tag": "number", "value": 2},
+                "statements": {
+                    "tag": "statement_list",
+                    "statements": [{"tag": "print", "value": {"tag": "number", "value": 2}}]
+                },
+            },
+        ],
+        "default": {
+            "tag": "statement_list",
+            "statements": [{"tag": "print", "value": {"tag": "number", "value": 0}}]
+        },
+    }
 
 
 def parse_program(tokens):
@@ -1194,19 +1272,24 @@ if __name__ == "__main__":
         test_parse_function_statement,
         test_parse_statement,
         test_parse_program,
+        test_parse_switch_statement,
     ]
 
-    test_grammar = grammar
+test_grammar = grammar
 
-    # Run each test function
-    for test_function in test_functions:
-        rule = test_function.__doc__.strip().replace("Tests  ", "")
-        print("testing", rule.split(" = ")[0])
-        assert rule in grammar, f"rule [[[ {rule} ]]] not in grammar."
-        test_grammar = test_grammar.replace(rule + "\n", "")
-        test_function()
+# Run each test function once
+for test_function in test_functions:
+    rule = test_function.__doc__.strip().replace("Tests  ", "")
+    print("testing", rule.split(" = ")[0])
+    assert rule in grammar, f"rule [[[ {rule} ]]] not in grammar."
+    test_grammar = test_grammar.replace(rule + "\n", "")
+    test_function()
 
-    if test_grammar.strip() != "":
-        print(f"Untested grammar = [[[ {test_grammar} ]]]")
+if test_grammar.strip() != "":
+    print(f"Untested grammar = [[[ {test_grammar} ]]]")
 
-    test_parse()
+# Run parse tests
+test_parse()
+
+print("All parser tests passed!")
+

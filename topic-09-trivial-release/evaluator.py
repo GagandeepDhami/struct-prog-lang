@@ -516,6 +516,19 @@ def test_evaluate_complex_assignment():
     result, _ = evaluate(ast, environment)
     assert environment["x"]["b"] == 4
 
+def evaluate(ast, environment):
+    # Other cases...
+
+    if ast["tag"] == "switch":
+        condition_value, _ = evaluate(ast["condition"], environment)
+        for case in ast["cases"]:
+            case_value, _ = evaluate(case["value"], environment)
+            if condition_value == case_value:
+                return evaluate(case["statements"], environment)
+        if ast["default"]:
+            return evaluate(ast["default"], environment)
+        return None, False
+
 if __name__ == "__main__":
     # statement_lists and programs are tested implicitly
     test_evaluate_single_value()
