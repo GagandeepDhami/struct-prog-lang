@@ -2,16 +2,15 @@ from tokenizer import tokenize
 from parser import parse
 from pprint import pprint
 
-
 def evaluate(ast, environment):
     if ast["tag"] == "number":
         assert type(ast["value"]) in [
             float,
             int,
-        ], f"unexpected type {type(ast["value"])}"
+        ], f"unexpected type {type(ast['value'])}"
         return ast["value"], False
     if ast["tag"] == "string":
-        assert type(ast["value"]) == str, f"unexpected type {type(ast["value"])}"
+        assert type(ast["value"]) == str, f"unexpected type {type(ast['value'])}"
         return ast["value"], False
     if ast["tag"] == "list":
         items = []
@@ -20,13 +19,13 @@ def evaluate(ast, environment):
             items.append(result)
         return items, False        
     if ast["tag"] == "object":
-        object = {}
+        obj = {}
         for item in ast["items"]:
             key, _ = evaluate(item["key"], environment)
             assert type(key) is str, "Object key must be a string"
             value, _ = evaluate(item["value"], environment)
-            object[key] = value
-        return object, False        
+            obj[key] = value
+        return obj, False        
     if ast["tag"] == "identifier":
         identifier = ast["value"]
         if identifier in environment:
@@ -34,61 +33,46 @@ def evaluate(ast, environment):
         if "$parent" in environment:
             return evaluate(ast, environment["$parent"])
         assert False, f"Unknown identifier: '{identifier}'."
-    if ast["tag"] == "+":
+    if ast["tag"] in ["+", "-", "*", "/"]:
         left_value, _ = evaluate(ast["left"], environment)
         right_value, _ = evaluate(ast["right"], environment)
-        return left_value + right_value, False
-    if ast["tag"] == "-":
-        left_value, _ = evaluate(ast["left"], environment)
-        right_value, _ = evaluate(ast["right"], environment)
-        return left_value - right_value, False
-    if ast["tag"] == "*":
-        left_value, _ = evaluate(ast["left"], environment)
-        right_value, _ = evaluate(ast["right"], environment)
-        return left_value * right_value, False
-    if ast["tag"] == "/":
-        left_value, _ = evaluate(ast["left"], environment)
-        right_value, _ = evaluate(ast["right"], environment)
-        assert right_value != 0, "Division by zero"
-        return left_value / right_value, False
+        if ast["tag"] == "+":
+            return left_value + right_value, False
+        if ast["tag"] == "-":
+            return left_value - right_value, False
+        if ast["tag"] == "*":
+            return left_value * right_value, False
+        if ast["tag"] == "/":
+            assert right_value != 0, "Division by zero"
+            return left_value / right_value, False
     if ast["tag"] == "negate":
         value, _ = evaluate(ast["value"], environment)
         return -value, False
-    if ast["tag"] == "&&":
-        left_value, _ = evaluate(ast["left"], environment)
-        right_value, _ = evaluate(ast["right"], environment)
-        return left_value and right_value, False
-    if ast["tag"] == "||":
-        left_value, _ = evaluate(ast["left"], environment)
-        right_value, _ = evaluate(ast["right"], environment)
-        return left_value or right_value, False
-    if ast["tag"] == "!":
-        value, _ = evaluate(ast["value"], environment)
-        return not value, False
-    if ast["tag"] == "<":
-        left_value, _ = evaluate(ast["left"], environment)
-        right_value, _ = evaluate(ast["right"], environment)
-        return left_value < right_value, False
-    if ast["tag"] == ">":
-        left_value, _ = evaluate(ast["left"], environment)
-        right_value, _ = evaluate(ast["right"], environment)
-        return left_value > right_value, False
-    if ast["tag"] == "<=":
-        left_value, _ = evaluate(ast["left"], environment)
-        right_value, _ = evaluate(ast["right"], environment)
-        return left_value <= right_value, False
-    if ast["tag"] == ">=":
-        left_value, _ = evaluate(ast["left"], environment)
-        right_value, _ = evaluate(ast["right"], environment)
-        return left_value >= right_value, False
-    if ast["tag"] == "==":
-        left_value, _ = evaluate(ast["left"], environment)
-        right_value, _ = evaluate(ast["right"], environment)
-        return left_value == right_value, False
-    if ast["tag"] == "!=":
-        left_value, _ = evaluate(ast["left"], environment)
-        right_value, _ = evaluate(ast["right"], environment)
-        return left_value != right_value, False
+    if ast["tag"] in ["&&", "||", "!", "<", ">", "<=", ">=", "==", "!="]:
+        left_value = None
+        right_value = None
+        if "left" in ast:
+            left_value, _ = evaluate(ast["left"], environment)
+        if "right" in ast:
+            right_value, _ = evaluate(ast["right"], environment)
+        if ast["tag"] == "&&":
+            return (left_value and right_value), False
+        if ast["tag"] == "||":
+            return (left_value or right_value), False
+        if ast["tag"] == "!":
+            return not left_value, False
+        if ast["tag"] == "<":
+            return left_value < right_value, False
+        if ast["tag"] == ">":
+            return left_value > right_value, False
+        if ast["tag"] == "<=":
+            return left_value <= right_value, False
+        if ast["tag"] == ">=":
+            return left_value >= right_value, False
+        if ast["tag"] == "==":
+            return left_value == right_value, False
+        if ast["tag"] == "!=":
+            return left_value != right_value, False
 
     if ast["tag"] == "print":
         if ast["value"]:
@@ -100,12 +84,27 @@ def evaluate(ast, environment):
         return "\n", False
 
     if ast["tag"] == "if":
+        # CLASS PROJECT: Updated if handling to support 'elseif' and 'else'
         condition, _ = evaluate(ast["condition"], environment)
         if condition:
             value, return_chain = evaluate(ast["then"], environment)
             if return_chain:
                 return value, return_chain
         else:
+            # Check for 'elseif' blocks if present
+            if "elseif" in ast:
+                matched = False
+                for elseif_block in ast["elseif"]:
+                    elseif_condition, _ = evaluate(elseif_block["condition"], environment)
+                    if elseif_condition:
+                        value, return_chain = evaluate(elseif_block["then"], environment)
+                        if return_chain:
+                            return value, return_chain
+                        matched = True
+                        break
+                if matched:
+                    return None, False
+            # If no elseif matched or no elseif present, check else block
             if "else" in ast:
                 value, return_chain = evaluate(ast["else"], environment)
                 if return_chain:
@@ -126,6 +125,8 @@ def evaluate(ast, environment):
         return None, False
 
     if ast["tag"] == "statement_list":
+        value = None
+        return_chain = False
         for statement in ast["statements"]:
             value, return_chain = evaluate(statement, environment)
             if return_chain:
@@ -133,6 +134,8 @@ def evaluate(ast, environment):
         return value, return_chain
 
     if ast["tag"] == "program":
+        value = None
+        return_chain = False
         for statement in ast["statements"]:
             value, return_chain = evaluate(statement, environment)
             if return_chain:
@@ -147,15 +150,12 @@ def evaluate(ast, environment):
         local_environment = {}
         argument_values = []
         for argument in ast["arguments"]:
-            value, _ = evaluate(argument, environment)
-            argument_values.append(value)
-        parameter_identifiers = []
-        for parameter in function["parameters"]:
-            identifier = parameter["value"]
-            parameter_identifiers.append(identifier)
+            val, _ = evaluate(argument, environment)
+            argument_values.append(val)
+        parameter_identifiers = [param["value"] for param in function["parameters"]]
         p = list(zip(parameter_identifiers, argument_values))
-        for identifier, value in p:
-            local_environment[identifier] = value
+        for identifier, val in p:
+            local_environment[identifier] = val
         local_environment["$parent"] = environment
         value, return_chain = evaluate(function["body"], local_environment)
         if return_chain:
@@ -164,7 +164,6 @@ def evaluate(ast, environment):
             return None, False
 
     if ast["tag"] == "complex":
-        print(ast)
         base, _ = evaluate(ast["base"], environment)
         index, _ = evaluate(ast["index"], environment)
         if index == None:
@@ -173,7 +172,7 @@ def evaluate(ast, environment):
             assert int(index) == index
             assert type(base) == list
             assert len(base) > index
-            return base[index], False
+            return base[int(index)], False
         if type(index) == str:
             assert type(base) == dict
             return base[index], False
@@ -187,33 +186,44 @@ def evaluate(ast, environment):
             target_index = target["value"] 
         elif target["tag"] == "complex":
             base, _ = evaluate(target["base"], environment)
-            print(f"Target Base = {[base]}")
             index, _ = evaluate(target["index"], environment)
-            print(f"Target Index = {[index]}")
             assert type(index) in [int, float, str], f"Unknown index type [{index}]"
             if type(index) in [int, float]:
                 assert int(index) == index
                 assert type(base) == list
                 assert len(base) > index
                 target_base = base
-                target_index = index
-            if type(index) in [str]:
+                target_index = int(index)
+            else:
                 assert type(base) == dict
                 target_base = base
                 target_index = index
         else:
             assert False, f"Unknown target type in assignment. {target}"
-        value, return_chain = evaluate(ast["value"], environment)
+        val, return_chain = evaluate(ast["value"], environment)
         if return_chain:
-            return value, return_chain
-        target_base[target_index] = value
+            return val, return_chain
+        target_base[target_index] = val
         return None, False
 
     if ast["tag"] == "return":
         if "value" in ast:
-            value, return_chain = evaluate(ast["value"], environment)
-            return value, True
+            val, return_chain = evaluate(ast["value"], environment)
+            return val, True
         return None, True
+
+    # CLASS PROJECT: Add switch handling
+    if ast["tag"] == "switch":
+        condition_value, _ = evaluate(ast["condition"], environment)
+        # Check cases for a match
+        for case in ast["cases"]:
+            case_value, _ = evaluate(case["value"], environment)
+            if condition_value == case_value:
+                return evaluate(case["statements"], environment)
+        # If no case matched and default present, evaluate default
+        if ast["default"]:
+            return evaluate(ast["default"], environment)
+        return None, False
 
     assert False, f"Unknown tag [{ast['tag']}] in AST"
 
@@ -301,6 +311,16 @@ def test_evaluate_if_statement():
     equals("if(1) {x=1} else {x=2}", {"x": 0}, None, {"x": 1})
     equals("if(0) {x=1} else {x=2}", {"x": 0}, None, {"x": 2})
 
+    # Test elseif chain
+    code = """
+    if(0) {x=10}
+    elseif(0) {x=20}
+    elseif(1) {x=30}
+    else {x=40}
+    """
+    env = {"x":0}
+    evaluate(parse(tokenize(code)), env)
+    assert env["x"] == 30, f"Expected x=30 from elseif chain, got {env['x']}"
 
 def test_evaluate_while_statement():
     print("testing evaluate_while_statement")
@@ -413,14 +433,6 @@ def test_evaluate_function_call():
     environment = {}
     code = """
         x = 3; 
-        function f() 
-            {return(x)};
-        function g(q)
-            {return 2};
-        g(4)
-        """
-    code = """
-        x = 3; 
         function g(q)
             {return 2};
         g(4)
@@ -516,19 +528,6 @@ def test_evaluate_complex_assignment():
     result, _ = evaluate(ast, environment)
     assert environment["x"]["b"] == 4
 
-def evaluate(ast, environment):
-    # Other cases...
-
-    if ast["tag"] == "switch":
-        condition_value, _ = evaluate(ast["condition"], environment)
-        for case in ast["cases"]:
-            case_value, _ = evaluate(case["value"], environment)
-            if condition_value == case_value:
-                return evaluate(case["statements"], environment)
-        if ast["default"]:
-            return evaluate(ast["default"], environment)
-        return None, False
-
 if __name__ == "__main__":
     # statement_lists and programs are tested implicitly
     test_evaluate_single_value()
@@ -549,3 +548,4 @@ if __name__ == "__main__":
     test_evaluate_list_literal()
     test_evaluate_object_literal()
     print("done.")
+
